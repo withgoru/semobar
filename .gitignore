@@ -222,3 +222,7 @@ tags
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/svelte,node,visualstudiocode,vim,macos
+
+# Cloudflare Workers local secrets
+.dev.vars
+.dev.vars.*

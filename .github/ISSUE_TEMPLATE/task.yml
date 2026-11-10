@@ -1,0 +1,25 @@
+name: Task
+description: 로드맵 Step 또는 구현 작업
+title: "[Task] "
+labels: ["type:feat"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 목표
+      description: 이 작업으로 달성할 것
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 기준
+      description: 체크리스트 형태로 작성
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: input
+    id: refs
+    attributes:
+      label: 관련 문서 섹션
+      placeholder: "AGENTS.md Section 3.1, 6 Step 3"

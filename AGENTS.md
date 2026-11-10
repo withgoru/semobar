@@ -17,11 +17,12 @@
 - **Deployment / Compute:** Cloudflare Workers (`@sveltejs/adapter-cloudflare`)
 - **Database:** Cloudflare D1 (Edge SQLite) - 채팅 내역 및 스캔 아카이브 저장
 - **Object Storage:** Cloudflare R2 - 생성된 QR 코드 이미지 및 상품 썸네일 호스팅
-- **AI Engine:** LG AI연구원 **K-EXAONE 2.5** API
-  - Context: 512K / Features: Chat, Tool Calling, Structured Outputs
+- **AI Engine:** LG AI연구원 **K-EXAONE 2.5** API (`k-exaone_v2.5`, OpenAI 호환 `https://api.exaone.ai/v1/chat/completions`)
+  - Context: 524,288 토큰 / Features: Chat, Tool Calling, Structured Outputs(상세 형식은 실호출로 검증)
+  - 호출 시 `reasoning_effort=low`, 서버 측 응답 스키마 검증·재시도, 제공자 교체 가능한 추상화 (Section 7)
 - **Client Libraries:**
-  - Barcode/QR Reader: 클라이언트 사이드 디코딩. 라이브러리 **미정** (`html5-qrcode` / `zxing-wasm` / `BarcodeDetector` 중 스파이크로 결정 — Section 7)
-  - QR Generator: `qrcode` (Workers 서버 사이드 SVG/PNG 버퍼 생성 후 R2 업로드)
+  - Barcode/QR Reader: 클라이언트 디코딩. **`BarcodeDetector` 우선 + `zxing-wasm` 폴백** (지연 로딩). `html5-qrcode`는 사용하지 않는다.
+  - QR Generator: 의존성 없는 SVG 생성 라이브러리(`uqr` / `qrcode-svg` 중 선정)로 Workers에서 **SVG만** 생성해 R2에 업로드. PNG는 클라이언트 canvas 변환.
 
 ---
 
@@ -66,7 +67,7 @@ POST /api/chat → 엑사원(대화 맥락 + 필요 시 Tool Calling) → 도구
 - **Trigger:** QR로 URL이 스캔되었을 때(코드 직접 호출) 또는 사용자가 채팅에서 링크 안전성을 물어볼 때(Tool Calling).
 - **Parameters:** `url` (string)
 - **Execution (전부 코드, 결정론적):**
-  1. 보안 DB 조회 (Google Safe Browsing / Web Risk 약관·한도 확인 필요, 한국 신고 DB 가용성은 스파이크로 확인).
+  1. 보안 DB 조회: Google Safe Browsing(수익화 전 Lookup, 상업 전환 시 Web Risk) + URLhaus 덤프. 소스는 어댑터로 분리하고 결과에 출처·라이선스를 담는다. Google 데이터 기반 경고에는 "Advisory provided by Google"을 표기한다 (Section 7).
   2. URL 규칙 검사: 펀니코드·유사 도메인, 의심 TLD, IP 직접 접속, 과도한 서브도메인, 단축 URL 여부, 도메인 연령 등.
   3. 신호를 점수로 합산하여 `SAFE` / `WARNING` / `DANGER` 확정.
 - **AI Output:** 엑사원은 **확정된 등급과 근거 신호를 한글로 설명**할 뿐, 등급을 바꾸지 못한다.
@@ -126,7 +127,9 @@ POST /api/chat → 엑사원(대화 맥락 + 필요 시 Tool Calling) → 도구
   - [ ] 마일스톤(`Phase 1 MVP`) 생성, 로드맵 Step을 이슈로 등록
   - [ ] main 브랜치 보호 적용 (저장소는 공개 상태 — 규칙은 Section 8.4)
 - [ ] **Step 0: 검증 스파이크 (설계 전 선행, Section 7 참조)**
-  - 바코드 DB 적중률, K-EXAONE 2.5 API/Tool Calling 확인, 한국 보안 신고 DB 가용성 조사. (국내 가격 매칭은 Phase 2로 이관되어 제외)
+  - [x] 웹 조사·적중률 1차 측정 완료 (결과: Section 7 "스파이크 결과")
+  - [ ] 남은 검증: EXAONE 실호출, 실제 바코드 재측정, 실기기 스캔, KISA 데이터셋 (Section 7 "남은 검증")
+  - 국내 가격 매칭은 Phase 2로 이관되어 제외
 - [ ] **Step 0.5: API 계약 및 응답 스키마 설계** (`docs/` 아래 문서화)
   - 카드 4종(`text`, `product_card`, `security_card`, `qr_card`) 필드 정의, `/api/chat`·`/api/history` 요청·응답 계약. D1 스키마는 이 계약을 기준으로 설계한다.
 - [ ] **Step 1: 인프라 및 DB 스키마 설계**
@@ -162,18 +165,40 @@ POST /api/chat → 엑사원(대화 맥락 + 필요 시 Tool Calling) → 도구
 | UI 언어 | 한글 단일 |
 | 가격 검색 | **Phase 1 제외** (빠른 MVP). 제품명 기반 구글 검색 링크로 대체. 직접 가격 조회·최저가 비교·크롤링은 Phase 2 (네이버 쇼핑 API 등은 그때 약관·GTIN 매칭 검증) |
 | 제품명 검색 링크 | 코드가 생성하는 사실 필드. DB 미적중 시 바코드 번호 검색 링크로 폴백 |
-| Phase 2 | 헤드리스 분석은 Cloudflare Browser Rendering 우선 검토. Go/Python/Tabular는 데이터 축적 후 재평가 |
+| Phase 2 | 헤드리스 분석은 Cloudflare Browser Rendering 우선 검토(무료 하루 10분 → 유료 전제). Go/Python/Tabular는 데이터 축적 후 재평가 |
 
 ### 미결정 (제품 성격)
 - **포트폴리오/기술 데모 vs 서비스:** 미정. Phase 1은 포트폴리오 수준 범위로 진행하되, 서비스화 시 (1) 수익 모델(예: 제휴 링크)과 (2) 차별점(예: 한국 특화 큐싱 DB)을 재검토한다.
 
-### 미검증 가정 (스파이크로 확인 후 설계 확정)
-1. **바코드 DB 적중률:** 실제 해외 상품(특히 드럭스토어·화장품) 20~30개로 후보 DB(Open Food Facts, UPCitemdb 등) 조회 테스트.
-2. **국내 가격 매칭 (Phase 2로 이관):** 쇼핑 API가 바코드가 아닌 키워드 검색이므로 동일 상품 매칭 가능성, 직구 최저가·배송비·관세 데이터 출처, 약관(가격 표시·캐싱) 확인. Phase 1에서는 구글 검색 링크로 대체한다.
-3. **K-EXAONE 2.5 API:** 존재·접근 방법·인증, Tool Calling 및 Structured Outputs 지원과 제약(스키마 중첩 깊이 등) 확인. *(문서상 기재일 뿐 아직 미확인)*
-4. **보안 DB:** Google Safe Browsing은 비상업 용도 제한(→ Web Risk 유료) 여부 확인. KISA/경찰청 등 한국 신고 데이터 접근 가능성 조사.
-5. **클라이언트 스캐너:** `html5-qrcode`의 유지보수·iOS Safari 1D 바코드 성능 문제 → `zxing-wasm` / `BarcodeDetector` 대안 비교.
-6. **QR 생성:** `qrcode`의 PNG 출력이 Workers 런타임에서 동작하는지 확인 (불가 시 SVG 전용).
+### 스파이크 결과 (2026-11-10: 웹 조사 + 직접 측정)
+웹 조사 항목은 조사 에이전트 보고 기준이며, 아래 "남은 검증"에 적은 것은 직접 확인 전까지 가정으로 취급한다.
+
+1. **바코드 DB 적중률 (직접 측정):** 28개 샘플 중 12개 적중 — 식품 9/11, 한국 식품 1/2, **화장품 0/8, 의약품 0/4**, 일반 전자 1/2, 도서 1/1. 소스별로는 Open Food Facts 10건, UPCitemdb 6건, Open Beauty/Products Facts 0건.
+   - 한계: 샘플은 기억에 의존한 바코드라 일부가 잘못된 코드일 수 있고(UPCitemdb 400 응답 2건), UPCitemdb는 무료 한도(429, 16건)에 걸려 과소 측정됐다.
+   - **결론:** 식품은 Open Food Facts로 상당수 커버되지만 화장품·의약품은 무료 DB로 기대하기 어렵다. **"정보 없음" 카드 + 검색 링크 폴백 UX를 핵심 경로로 설계한다.**
+2. **국내 가격 매칭:** Phase 2로 이관 (네이버 쇼핑 API의 GTIN 검색 지원·약관은 확인하지 못함). 해외 가격 API는 무료 한도가 작고(UPCitemdb 일 100건) 유료는 월 $75~.
+3. **K-EXAONE 2.5 API (공식 문서 기준):**
+   - 모델 ID `k-exaone_v2.5`, 엔드포인트 `https://api.exaone.ai/v1/chat/completions`, Bearer 인증, OpenAI 호환 형식, SSE 스트리밍, 컨텍스트 524,288 토큰(입력 + `max_tokens`). 2026-11-09 무료 공개.
+   - Tool calling·Structured outputs는 "지원 기능"으로 표기돼 있으나 **상세 형식·제약은 문서에서 확인되지 않았다.**
+   - **추론을 끌 수 없다.** `reasoning_effort`(low/high/max, 기본 max)를 **`low`로 설정**하고, 응답의 `reasoning_content`를 분리하며 `content` 앞뒤 공백(`"\n\n"` 시작 가능)을 제거한다.
+   - 한도 초과 시 429, 헤더 `x-{second|minute|day}-rate-limit(-remaining)`, `retry-after(-ms)`. 구체적 한도·지연·무료 기간·상업 이용 조건은 확인 불가.
+   - 스키마 강제에 의존하지 말고 **서버 측 스키마 검증 + 재시도**를 둔다. 모델 제공자는 교체 가능하도록 추상화한다.
+4. **보안 DB:**
+   - Google Safe Browsing(v4)은 **비상업 용도 한정**이며 상업 이용은 Web Risk(월 10만 건 무료, 2차 출처). Google 데이터 기반 경고에는 **"Advisory provided by Google" 표기**가 필요하고, 경고 문구는 "suspected" 같은 완화 표현을 쓴다.
+   - URLhaus: 무료·인증키 필요·멀웨어 위주(피싱 커버리지 낮음). PhishTank: 신규 가입 불가. VirusTotal 무료: 상업 이용 금지(제외).
+   - 한국 소스: KISA 피싱 차단 목록이 data.go.kr에 있다는 것은 제3자 문서 기준 추정. 더치트·경찰청은 공개 API 없음.
+   - 도메인 연령은 RDAP를 Workers에서 호출하고 KV로 캐시한다 (`.kr` 지원 여부 미확인).
+   - **MVP 조합:** Safe Browsing(수익화 전 Lookup, 이후 Web Risk 전환) + URLhaus 덤프 + RDAP 도메인 연령 + 자체 규칙 점수. 위협 소스는 어댑터로 분리하고 소스별 출처·라이선스 플래그를 응답에 담는다.
+5. **클라이언트 스캐너:** `html5-qrcode`는 2023-04 이후 릴리스가 없고 maintenance mode라 **제외**. iOS Safari는 `BarcodeDetector`가 기본 비활성이다. **채택: `BarcodeDetector` 우선 + `zxing-wasm` 폴백**(iOS는 폴백이 주 경로, 번들 약 1~1.5MiB → 지연 로딩·PWA 캐시).
+6. **QR 생성·인프라:** 서버는 **SVG만 생성**(의존성 없는 `uqr`/`qrcode-svg` 계열)하고 PNG는 클라이언트 canvas에서 변환한다. Workers 무료 플랜 CPU 시간은 10ms. Cloudflare Browser Rendering 무료는 하루 10분이라 **Phase 2 헤드리스 분석은 유료 플랜을 전제**로 한다.
+
+### 남은 검증 (직접 확인 필요)
+1. **EXAONE 실호출:** API 키로 Tool calling, JSON Schema 강제, `reasoning_effort=low` 지연 시간 실측, 이용약관(상업 이용) 확인.
+2. **실제 해외 상품 바코드 재측정:** 보유 상품 10~30개의 바코드로 적중률을 다시 측정 (특히 화장품·의약품).
+3. **실기기 스캔 테스트:** iOS/Android에서 저조도·1D 바코드 인식률.
+4. **KISA 피싱 차단 목록:** data.go.kr 실제 등록 여부, 갱신 주기, 이용 조건.
+5. **QR 라이브러리:** 선택한 SVG 라이브러리의 Workers(`wrangler dev`) 동작·CPU 시간.
+6. **Safe Browsing 약관 원문**과 Web Risk 가격 재확인.
 
 ### 알려진 리스크 및 정책
 - **비용/남용:** 인프라 비용은 Cloudflare가 아니라 LLM 호출이 주도한다. 익명 `/api/chat` 레이트 리밋 필수.

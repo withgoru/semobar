@@ -9,7 +9,7 @@
 
 - **실측 결과 (2026-11-10, 실호출 27회):** 응답 헤더 기준 제공자 한도는 **초당 1회, 분당 60회, 일 86,400회**다. 분당 60회가 사실상 한도(초당 1회 지속)이고 일 한도는 의미가 없다. 한도 초과 시 429, 헤더 `x-{second|minute|day}-rate-limit(-remaining)`, `retry-after(-ms)`. (429 응답 자체는 유발해 보지 않았다.)
 - **지연:** 단순 호출 1.4~5초, 서술·도구 호출 9.5~27.4초(추론 토큰 수에 따라 편차가 크다). `reasoning_effort=low`여도 추론은 끌 수 없고, **`max_tokens`에 추론 토큰이 포함**된다 (300으로 두면 추론에 다 쓰여 content가 비어 온다).
-- 무료 공개 직후라 한도·무료 기간이 바뀔 수 있다. 값은 `[vars]`로 두어 코드 수정 없이 바꾼다.
+- 무료 공개 직후라 한도·무료 기간이 바뀔 수 있다. 값은 `vars`로 두어 코드 수정 없이 바꾼다.
 - 아래 "초기값" 중 **사용자 한도와 목표 사용자 규모는 제안**이다.
 
 ## 1. 원칙
@@ -147,7 +147,7 @@ RETURNING count;
 
 ---
 
-## 9. 설정값 (`[vars]` 제안)
+## 9. 설정값 (`vars` 제안)
 
 | 이름 | 기본(제안) | 설명 |
 | --- | --- | --- |
@@ -175,7 +175,7 @@ RETURNING count;
 개발 중에는 계속 테스트해야 하므로 **앱이 거는 한도는 적용하지 않는다.** 대신 운영에 새지 않도록 이중 장치를 둔다.
 
 ### 설정과 해제 조건
-- `wrangler.toml`의 기본값은 `APP_ENV=production`, `LIMITS_MODE=enforce`다.
+- `wrangler.jsonc`의 기본값은 `APP_ENV=production`, `LIMITS_MODE=enforce`다.
 - 로컬 `.dev.vars`(배포되지 않는 파일)에만 `APP_ENV=development`, `LIMITS_MODE=off`를 둔다.
 - **제한 해제는 세 조건이 모두 참일 때만** 동작한다: `APP_ENV=development` **그리고** `LIMITS_MODE=off` **그리고** 요청 호스트가 `localhost` / `127.0.0.1` / `[::1]`. 하나라도 어긋나면 `enforce`로 동작한다.
 - 운영(`production`·`staging`)에서 `LIMITS_MODE=off`가 감지되면 **무시하고 `enforce`로 동작**하며 오류 로그를 남긴다.

@@ -169,7 +169,7 @@
 - [x] **Step 0.5: API 계약·응답 스키마·DB·한도·보안 점수 설계** — `docs/` 참조 (카드 스키마, 엔드포인트, D1 DDL, 호출 한도 통제, 보안 점수 규칙, 테스트 전략)
 - [ ] **Step 1: 프로젝트 초기화와 인프라** — 이슈 #15~#18
   - SvelteKit 초기화(`adapter-cloudflare`, TypeScript, PWA), 린트·타입체크·Vitest 설정
-  - `wrangler.toml`: 바인딩 `DB`(D1), `BUCKET`(R2), `CACHE`(KV), `REQ_LIMITER`(Rate Limiting, 가능 시), `[vars]`(기본 `APP_ENV=production`, `LIMITS_MODE=enforce`, `EXAONE_*`, `LLM_*` — `docs/db-schema.md` 6절, `docs/llm-budget.md` 9절). 로컬은 `.dev.vars`(`EXAONE_API_KEY`, 개발 시 `APP_ENV=development`, `LIMITS_MODE=off`).
+  - `wrangler.jsonc`: 바인딩 `DB`(D1), `BUCKET`(R2), `CACHE`(KV), `REQ_LIMITER`(Rate Limiting, 가능 시), `vars`(기본 `APP_ENV=production`, `LIMITS_MODE=enforce`, `EXAONE_*`, `LLM_*` — `docs/db-schema.md` 6절, `docs/llm-budget.md` 9절). 로컬은 `.dev.vars`(`EXAONE_API_KEY`, 개발 시 `APP_ENV=development`, `LIMITS_MODE=off`).
   - `schema.sql`: `docs/db-schema.md`의 DDL (`sessions`, `messages`, `qr_assets`, `llm_usage`, `llm_gate`, `narration_cache`). Cron 구현 방식 확인(`scheduled` 지원 여부, 불가 시 별도 Worker).
 - [ ] **Step 2: AI 연동·한도 통제 모듈** — 이슈 #19~#24
   - `src/lib/server/exaone.ts`: 클라이언트(`reasoning_effort=low`, 타임아웃 20/30초, `reasoning_content` 폐기), 도구 정의 2개(채팅) + `write_product_narration`(서술), 프롬프트 v1, 서버 검증·재시도, 제공자 교체 추상화.

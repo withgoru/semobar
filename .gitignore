@@ -226,3 +226,9 @@ tags
 # Cloudflare Workers local secrets
 .dev.vars
 .dev.vars.*
+
+# Wrangler local state (miniflare D1/R2/KV)
+.wrangler/
+
+# wrangler types로 생성되는 파일 (npm run gen)
+worker-configuration.d.ts

@@ -156,7 +156,7 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 | `TURNSTILE_SECRET_KEY` | 선택 | 조건부 봇 방지 (`docs/llm-budget.md` 8절) |
 | `UPCITEMDB_USER_KEY` | 선택 | UPCitemdb 유료/개발 키 (무료 trial은 키 없이 호출) |
 
-**일반 변수** (`wrangler.toml`의 `[vars]`, 비밀 아님)
+**일반 변수** (`wrangler.jsonc`의 `vars`, 비밀 아님)
 | 이름 | 기본값 | 용도 |
 | --- | --- | --- |
 | `EXAONE_BASE_URL` | `https://api.exaone.ai/v1` | 제공자 교체 대비 |

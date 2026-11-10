@@ -39,7 +39,15 @@ type ScanFormat =
 
 // assistant 측
 type AssistantCard = TextCard | ProductCard | SecurityCard | QrCard;
-type NarrationStatus = "ok" | "unavailable";                         // unavailable = 엑사원 실패·생략
+type NarrationStatus = "ok" | "unavailable";                         // unavailable = 엑사원 실패·생략·한도 초과
+
+// /api/scan·/api/chat 응답에 항상 포함되는 AI 사용량 (UI의 "오늘 AI 대화 N/M" 표시용, docs/llm-budget.md)
+interface AiQuota {
+  used: number;                 // 오늘 사용한 채팅 횟수
+  limit: number;                // 세션 일 한도
+  resets_at: ISODate;           // 다음 KST 자정
+  degraded: boolean;            // 전체 한도 압박(L1 이상)으로 AI 기능이 축소 중
+}
 ```
 
 > **AGENTS.md 대비 변경:** 사용자 메시지에 `scan` 타입을 추가했다 (스캔도 대화 말풍선·맥락으로 저장하기 위함). assistant 카드는 기존 4종 그대로.
@@ -55,7 +63,7 @@ interface TextCard {
   type: "text";
   text: string;                       // 일반 텍스트 (렌더 시 이스케이프)
   origin: "template" | "model";       // template: 코드 문구 / model: 엑사원 생성
-  payload?: { kind: "wifi" | "vcard" | "geo" | "other"; raw: string };  // 비-URL QR 원문 (코드 블록으로 표시, 자동 실행 안 함)
+  payload?: { kind: "wifi" | "vcard" | "geo" | "other"; raw?: string };  // 비-URL QR. raw는 이번 응답에서만 내려가고(코드 블록 표시, 자동 실행 안 함) DB에는 저장하지 않는다 → 이력에서는 kind만 있다
 }
 ```
 
@@ -164,7 +172,7 @@ interface QrCard {
 // Request
 { format: ScanFormat; raw: string /* 최대 2048자 */ }
 // Response 200
-{ messages: [Message /*user:scan*/, Message /*assistant card*/, Message?] }
+{ messages: [Message /*user:scan*/, Message /*assistant card*/, Message?]; quota: AiQuota }
 ```
 분기 (코드):
 | 조건 | 처리 | 결과 카드 |
@@ -181,9 +189,9 @@ interface QrCard {
 // Request
 { text: string /* 1~500자 */ }
 // Response 200
-{ messages: [Message /*user:text*/, Message /*assistant: 위 4종 중 하나*/, Message?] }
+{ messages: [Message /*user:text*/, Message /*assistant: 위 4종 중 하나*/, Message?]; quota: AiQuota }
 ```
-- 맥락: 같은 세션의 **최근 N개 메시지(기본 12개)** 를 서버가 D1에서 읽어 엑사원에 전달한다. 클라이언트가 맥락을 보내지 않는다.
+- 맥락: 같은 세션의 **최근 8개 메시지**를 서버가 D1에서 읽어 엑사원에 전달한다(카드 메시지는 `facts` 요약만, `docs/llm-budget.md` 2절). 클라이언트가 맥락을 보내지 않는다.
 - 사용 가능한 도구(채팅 경로 한정): `search_global_product`, `verify_url_security`, `generate_custom_qr` — 입력 스키마는 엑사원 모듈 설계 단계에서 확정.
 - **Phase 1은 스트리밍을 하지 않는다**(구조화 응답 + 서버 검증·병합 때문). 클라이언트는 "입력 중" 표시를 보여 준다. 지연 실측 후 재검토.
 
@@ -208,11 +216,12 @@ interface QrCard {
 
 ```ts
 // HTTP 4xx/5xx
-{ error: { code: ErrorCode; message: string /* 한글, 사용자 노출 가능 */; retry_after_ms?: number } }
+{ error: { code: ErrorCode; message: string /* 한글, 사용자 노출 가능 */; retry_after_ms?: number; resets_at?: ISODate; quota?: AiQuota } }
 
 type ErrorCode =
   | "BAD_REQUEST"        // 400 스키마 위반, 길이 초과
-  | "RATE_LIMITED"       // 429 (retry_after_ms 포함)
+  | "RATE_LIMITED"       // 429 요청 빈도 초과 (retry_after_ms 포함)
+  | "QUOTA_EXCEEDED"     // 429 AI 채팅 사용량 한도 (resets_at 포함). 스캔은 AI 한도와 무관하게 항상 동작
   | "UNAUTHENTICATED"    // 401 세션 쿠키 위조/만료 → 클라이언트가 새 세션으로 재시도
   | "UPSTREAM_ERROR"     // 502 외부 DB/보안 API 실패 (가능한 경우 부분 결과 카드로 대체)
   | "INTERNAL";          // 500
@@ -231,22 +240,29 @@ type ErrorCode =
 
 ---
 
-## 7. 레이트 리밋 (초안)
+## 7. 레이트 리밋과 AI 사용량
+
+- **일반 요청 빈도**(근사치로 충분): Workers Rate Limiting 바인딩(`REQ_LIMITER`).
 
 | 대상 | 기준 | 한도(초안) |
 | --- | --- | --- |
 | `POST /api/scan` | 세션 + IP | 분당 30회 |
-| `POST /api/chat` | 세션 + IP | 분당 10회, 일 200회 |
-| QR 생성(채팅 경유) | 세션 | 일 10회 |
-| 신규 세션 생성 | IP | 시간당 20회 (필요 시 Turnstile) |
-- 엑사원 호출에는 서비스 전체 **일일 호출 상한**(비용 차단 스위치)을 둔다. 상한 도달 시 카드는 `narration: null`로 계속 제공된다.
+| `POST /api/chat` | 세션 + IP | 분당 10회 |
+| 신규 세션 생성 | IP | 시간당 20회 (초과 시 Turnstile) |
+
+- **AI(엑사원) 호출 한도**는 정확한 카운터가 필요해 별도 설계한다 → **`docs/llm-budget.md`**.
+  - 채팅은 세션·IP·전역 한도를 모두 통과해야 하며, 초과하면 `429 QUOTA_EXCEEDED`를 반환한다.
+  - 스캔의 AI 서술은 한도에 걸려도 **오류가 아니라** `narration: null`(템플릿)로 정상 응답한다.
+  - 모든 응답에 `quota`(`AiQuota`)를 포함해 UI가 남은 사용량을 미리 보여 준다.
 
 ---
 
-## 8. 열린 질문 (리뷰 요청)
+## 8. 결정 사항 (열린 질문 정리)
 
-1. **상품 이미지:** Open Food Facts 이미지는 CC BY-SA 라이선스라 R2에 복사하면 라이선스 의무가 커진다. Phase 1은 **hotlink + 출처 표기**로 두고 R2는 QR 전용으로 쓰는 안을 제안한다 (AGENTS.md의 "상품 썸네일 R2 호스팅"에서 변경).
-2. **스트리밍:** 4.2처럼 Phase 1 비스트리밍으로 시작해도 되는가? (엑사원 지연 실측 후 결정)
-3. **Turnstile:** 신규 세션 생성에 처음부터 넣을지, 남용이 관찰된 뒤 추가할지.
-4. **미적중 시 사용자 보정:** "이 상품 정보 직접 입력" 같은 기능은 Phase 1 범위 밖으로 둔다 (구글 링크 폴백만).
-5. **보안 점수 규칙**(신호별 가중치·등급 경계)은 이 문서 범위 밖이며 별도 문서로 이어서 설계한다.
+| 질문 | 결정 |
+| --- | --- |
+| 상품 이미지 | **hotlink + 출처 표기.** R2에는 복사하지 않고 QR 전용으로 쓴다 (Open Food Facts 이미지는 CC BY-SA) |
+| 스트리밍 | **Phase 1은 비스트리밍.** 엑사원 지연을 실측한 뒤 채팅 텍스트 응답에 한해 재검토 |
+| Turnstile | 평소에는 도입하지 않고, 세션 생성 남용 또는 AI 한도 압박(L1 이상) 시에만 조건부로 요구 (`docs/llm-budget.md` 8절) |
+| 미적중 시 사용자 보정 | Phase 1 범위 밖 (구글 링크 폴백만) |
+| 보안 점수 규칙 | 이 문서 범위 밖. 별도 문서로 이어서 설계 (신호별 가중치·등급 경계·소스 실패 시 하한) |

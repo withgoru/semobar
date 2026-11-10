@@ -1,7 +1,7 @@
 # D1 스키마 · 캐시 · 바인딩 (초안)
 
 > 상태: **초안 — 리뷰 반영 완료, 확정 대기.** 기준: `docs/api-contract.md`(카드·엔드포인트), `docs/llm-budget.md`(AI 사용량 통제), `AGENTS.md` Section 5(저장 규칙)·7.
-> DB는 Cloudflare D1(SQLite). 시각은 epoch **밀리초(UTC)** 정수, ID는 ULID(시간순 정렬 가능)다. 실제 마이그레이션 파일(`schema.sql`)은 로드맵 Step 1에서 이 문서를 기준으로 만든다.
+> DB는 Cloudflare D1(SQLite). 시각은 epoch **밀리초(UTC)** 정수, ID는 ULID(시간순 정렬 가능)다. 실제 마이그레이션은 `migrations/0001_init.sql`이며 이 문서의 DDL과 같아야 한다 (아래 '마이그레이션' 참고).
 
 ---
 
@@ -50,7 +50,8 @@ CREATE TABLE qr_assets (
   message_id  TEXT REFERENCES messages (id) ON DELETE SET NULL,
   r2_key      TEXT NOT NULL UNIQUE,             -- 예: qr/<id>.svg
   target_url  TEXT NOT NULL,
-  color_hex   TEXT NOT NULL CHECK (color_hex GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'),
+  color_hex   TEXT NOT NULL CHECK (length(color_hex) = 7 AND substr(color_hex, 1, 1) = '#'
+                                   AND substr(color_hex, 2) NOT GLOB '*[^0-9A-Fa-f]*'),   -- #RRGGBB (D1은 복잡한 GLOB 패턴을 거부한다)
   created_at  INTEGER NOT NULL,
   expires_at  INTEGER NOT NULL                  -- 기본 created_at + 90일
 );
@@ -82,6 +83,12 @@ CREATE TABLE narration_cache (
 );
 CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 ```
+
+### 마이그레이션
+- 이 DDL은 `migrations/0001_init.sql`로 적용한다 (`PRAGMA foreign_keys`는 D1이 항상 강제하므로 마이그레이션에서 뺀다). **설계 DDL과 마이그레이션은 `src/lib/server/schema.spec.ts`가 같음을 검사한다** — 스키마를 바꿀 때는 이 문서와 마이그레이션을 같은 PR에서 고친다.
+- 배포된 마이그레이션 파일은 수정하지 않고 `0002_*.sql`처럼 새 파일을 추가한다 (아직 배포 전이라 `0001`은 수정할 수 있다).
+- 로컬: `npm run db:migrate:local`(적용), `npm run db:reset:local`(로컬 D1 초기화 후 적용). 원격 적용(`wrangler d1 migrations apply DB --remote`)은 배포 이슈(#42)에서 다룬다.
+- **D1 제약:** 복잡한 `GLOB`/`LIKE` 패턴은 `LIKE or GLOB pattern too complex`로 거부된다. 그래서 `color_hex` 검증은 대괄호 6개를 반복하는 패턴이 아니라 `length` + `substr` + 단일 부정 패턴으로 쓴다 (실제 D1에서 확인).
 
 ### 쓰기량 점검 (D1 무료 일 10만 행 기준)
 - 스캔 1회 = `messages` 2행 (+ AI 서술 캐시 미스일 때 `llm_usage` 3~4행 + `llm_gate` 1행, `narration_cache` 1행). 채팅 1회 = `messages` 2행 + `llm_usage` 3~4행. QR 생성 1회 = 카드 메시지 + `qr_assets` 1행.

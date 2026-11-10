@@ -158,29 +158,29 @@
 ## 6. Next Implementation Roadmap (코딩 에이전트 우선 작업 순위)
 이 문서를 읽은 에이전트는 아래 순서대로 작업을 이어서 진행한다. 구현은 항상 이슈 → 브랜치 → PR 규칙(Section 8)을 따른다.
 
-- [ ] **Step 0.1: GitHub 저장소 설정 (Section 8 참조)**
+- [x] **Step 0.1: GitHub 저장소 설정 (Section 8 참조)**
   - [x] 라벨 체계 적용 (기본 라벨 삭제 후 Section 8.5 체계로 재생성)
-  - [ ] 마일스톤(`Phase 1 MVP`) 생성, 로드맵 Step을 이슈로 등록
-  - [ ] main 브랜치 보호 적용 (저장소는 공개 상태 — 규칙은 Section 8.4)
-- [ ] **Step 0: 검증 스파이크 (Section 7 참조)**
+  - [x] 마일스톤 `Phase 1 MVP` 생성, 백로그 이슈 #7~#44 등록 (아래 각 Step에 이슈 범위 표기)
+  - [x] main 브랜치 보호 적용 (Section 8.4, 이슈 #14)
+- [ ] **Step 0: 검증 스파이크 (Section 7 참조)** — 이슈 #7~#13
   - [x] 웹 조사, 바코드 DB 적중률 1차 측정, **EXAONE 실호출 측정 완료** (2026-11-10, 결과: Section 7)
   - [ ] 남은 검증: 실제 해외 상품 바코드 재측정, 실기기 스캔, KISA 데이터셋, SVG QR 라이브러리의 Workers 동작, Safe Browsing 약관·Web Risk 가격, ODbL 파생 DB 해당 여부 (Section 7 "남은 검증")
   - 국내 가격 매칭은 Phase 2로 이관되어 제외
 - [x] **Step 0.5: API 계약·응답 스키마·DB·한도·보안 점수 설계** — `docs/` 참조 (카드 스키마, 엔드포인트, D1 DDL, 호출 한도 통제, 보안 점수 규칙, 테스트 전략)
-- [ ] **Step 1: 프로젝트 초기화와 인프라**
+- [ ] **Step 1: 프로젝트 초기화와 인프라** — 이슈 #15~#18
   - SvelteKit 초기화(`adapter-cloudflare`, TypeScript, PWA), 린트·타입체크·Vitest 설정
   - `wrangler.toml`: 바인딩 `DB`(D1), `BUCKET`(R2), `CACHE`(KV), `REQ_LIMITER`(Rate Limiting, 가능 시), `[vars]`(기본 `APP_ENV=production`, `LIMITS_MODE=enforce`, `EXAONE_*`, `LLM_*` — `docs/db-schema.md` 6절, `docs/llm-budget.md` 9절). 로컬은 `.dev.vars`(`EXAONE_API_KEY`, 개발 시 `APP_ENV=development`, `LIMITS_MODE=off`).
   - `schema.sql`: `docs/db-schema.md`의 DDL (`sessions`, `messages`, `qr_assets`, `llm_usage`, `llm_gate`, `narration_cache`). Cron 구현 방식 확인(`scheduled` 지원 여부, 불가 시 별도 Worker).
-- [ ] **Step 2: AI 연동·한도 통제 모듈**
+- [ ] **Step 2: AI 연동·한도 통제 모듈** — 이슈 #19~#24
   - `src/lib/server/exaone.ts`: 클라이언트(`reasoning_effort=low`, 타임아웃 20/30초, `reasoning_content` 폐기), 도구 정의 2개(채팅) + `write_product_narration`(서술), 프롬프트 v1, 서버 검증·재시도, 제공자 교체 추상화.
   - `src/lib/server/llm-budget.ts`: D1 원자 카운터, **호출 간격 게이트(1.2초)**, 단계적 축소(L0~L3), 429·서킷 브레이커, **개발 모드 해제(3중 조건)** 및 디버그 헤더. 수용 기준 테스트 포함 (`docs/llm-budget.md` 10절).
-- [ ] **Step 3: 보안 판정 모듈** (`docs/security-scoring.md`)
+- [ ] **Step 3: 보안 판정 모듈** (`docs/security-scoring.md`) — 이슈 #25~#29
   - 규칙 데이터 `data/security/*.json`, 신호 생성·점수·등급 **순수 함수**, 소스 어댑터(Safe Browsing, URLhaus 조회, RDAP), 문구 템플릿. 골든 케이스 단위 테스트, `SOURCES_MODE=mock`.
-- [ ] **Step 4: 서버리스 API 라우트** (`docs/api-contract.md`)
+- [ ] **Step 4: 서버리스 API 라우트** (`docs/api-contract.md`) — 이슈 #30~#36
   - `POST /api/scan`, `POST /api/chat`, `POST /api/messages/:id/narration`, `GET`·`DELETE /api/history`, `GET /q/:id.svg`, 세션 쿠키, 요청 레이트 리밋, narration 캐시, QR 생성(SVG)·R2 업로드.
-- [ ] **Step 5: 프론트엔드 메신저 UI 및 스캐너 컴포넌트**
+- [ ] **Step 5: 프론트엔드 메신저 UI 및 스캐너 컴포넌트** — 이슈 #37~#40
   - Navy/Sky Blue 테마 채팅 레이아웃, 카드 4종 + 서술 `pending` 처리, 바텀 시트 스캐너(`BarcodeDetector` + `zxing-wasm` 폴백), 쿼터 표시, PWA 설정.
-- [ ] **Step 6: CI와 마무리**
+- [ ] **Step 6: CI와 마무리** — 이슈 #41~#44
   - `.github/workflows/` PR 검증(lint·typecheck·test·build), 배포 방식 확정, 비공개 베타 배포, 실기기 테스트.
 
 ---
@@ -279,11 +279,12 @@
 
 ### 8.4 main 브랜치 보호
 - 직접 푸시, force push, 브랜치 삭제를 금지하고 PR을 필수로 한다.
-- 1인 개발이므로 승인 리뷰는 필수가 아니며 셀프 머지를 허용한다.
-- CI가 도입되면 상태 체크 통과를 머지 조건으로 추가한다.
+- 1인 개발이므로 승인 리뷰는 필수가 아니며(필수 승인 0명) 셀프 머지를 허용한다.
+- **적용 상태(2026-11-10):** 관리자에게도 적용(`enforce_admins`), 선형 이력 필수. 직접 푸시가 `GH006: Changes must be made through a pull request`로 거부되는 것을 확인했다.
+- CI가 도입되면 상태 체크 통과를 머지 조건으로 추가한다 (이슈 #41).
 
 ### 8.5 이슈 관리
-- 로드맵 Step(Section 6)을 GitHub Issue로 등록하고 마일스톤 `Phase 1 MVP`에 묶는다.
+- 로드맵 Step(Section 6)을 GitHub Issue로 등록하고 마일스톤 `Phase 1 MVP`에 묶는다 (등록 완료: #7~#44, 선행 작업은 본문에 `#번호`로 링크).
 - 라벨 (저장소에 적용 완료, 이슈 하나에 `type:*` 1개 + `area:*` 1개 이상을 붙인다):
   - `type:*`: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci` (Conventional Commits type과 동일)
   - `area:*`: `frontend`, `api`, `db`, `ai`, `security`, `infra`

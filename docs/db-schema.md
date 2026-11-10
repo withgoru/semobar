@@ -66,6 +66,12 @@ CREATE TABLE llm_usage (
   PRIMARY KEY (scope, key, window_start)
 );
 
+-- 제공자 호출 간격 게이트 (초당 1회 한도를 지키는 마지막 호출 시각, docs/llm-budget.md 4절)
+CREATE TABLE llm_gate (
+  key          TEXT PRIMARY KEY,                -- 'global'
+  last_call_ms INTEGER NOT NULL
+);
+
 -- narration 전역 캐시 (같은 facts → 같은 서술을 전체 사용자가 재사용)
 CREATE TABLE narration_cache (
   cache_key   TEXT PRIMARY KEY,                 -- sha256(카드 타입 + 프롬프트 버전 + 서술용 facts)
@@ -78,7 +84,7 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 ```
 
 ### 쓰기량 점검 (D1 무료 일 10만 행 기준)
-- 스캔 1회 = `messages` 2행 (+ AI 서술 캐시 미스일 때 `llm_usage` 3~4행, `narration_cache` 1행). 채팅 1회 = `messages` 2행 + `llm_usage` 3~4행. QR 생성 1회 = 카드 메시지 + `qr_assets` 1행.
+- 스캔 1회 = `messages` 2행 (+ AI 서술 캐시 미스일 때 `llm_usage` 3~4행 + `llm_gate` 1행, `narration_cache` 1행). 채팅 1회 = `messages` 2행 + `llm_usage` 3~4행. QR 생성 1회 = 카드 메시지 + `qr_assets` 1행.
 - 일 1만 스캔이어도 기본 쓰기는 2만 행 수준이고, 캐시 덕분에 AI 관련 쓰기는 그보다 훨씬 적다. 세션 `last_seen_at` 갱신은 하루 1회로 제한한다.
 - 일 쓰기가 5만 행에 근접하면 `llm_usage` 카운터를 Durable Object로 옮기는 것을 검토한다.
 
@@ -91,8 +97,9 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 | 세션 조회 | `SELECT id, expires_at FROM sessions WHERE token_hash = ?` |
 | 이력 페이지 | `SELECT id, role, content, created_at FROM messages WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?` (첫 페이지는 `id < ?` 생략) |
 | 엑사원 맥락 | 같은 쿼리로 최근 8개 (`LIMIT 8`), 카드 메시지는 facts 요약만 모델에 전달 |
-| AI 호출 획득 | `llm_usage`의 원자적 upsert (`docs/llm-budget.md` 4절) |
+| AI 호출 획득 | `llm_usage`의 원자적 upsert와 `llm_gate`의 호출 간격 게이트 (`docs/llm-budget.md` 4절) |
 | narration 캐시 조회 | `SELECT narration FROM narration_cache WHERE cache_key = ? AND expires_at > ?` |
+| 서술 갱신 | `UPDATE messages SET content = json_set(content, '$.narration_status', ?, '$.narration', json(?)) WHERE id = ? AND session_id = ?` (서술 엔드포인트가 카드에 결과를 기록, `docs/api-contract.md` 4.6) |
 | 전체 삭제 | ① `SELECT r2_key FROM qr_assets WHERE session_id = ?` → ② R2 객체 삭제 → ③ `DELETE FROM sessions WHERE id = ?` (CASCADE) |
 
 - 한 요청에서 `messages`(사용자 + assistant) 쓰기는 `db.batch([...])`로 묶어 원자적으로 처리한다.
@@ -155,7 +162,7 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 | `EXAONE_BASE_URL` | `https://api.exaone.ai/v1` | 제공자 교체 대비 |
 | `EXAONE_MODEL` | `k-exaone_v2.5` | 모델 ID |
 | `EXAONE_REASONING_EFFORT` | `low` | 추론 강도 |
-| `EXAONE_RPM_LIMIT`, `EXAONE_RPD_LIMIT` | 콘솔 확인 후 입력 | 제공자 분·일 한도 |
+| `EXAONE_RPM_LIMIT`, `EXAONE_RPD_LIMIT`, `EXAONE_MIN_INTERVAL_MS` | `60`, `86400`, `1200` | 제공자 분·일 한도와 호출 시작 간격 (2026-11-10 실측) |
 | `LLM_SAFETY_RATIO` 외 `LLM_*` | `docs/llm-budget.md` 9절 | 세션·IP 한도, 타임아웃, 출력 상한 |
 | `APP_ENV`, `LIMITS_MODE` | `production`, `enforce` | 개발 중에는 `.dev.vars`에서만 `development`, `off`로 덮어써 한도를 해제 (`docs/llm-budget.md` 10절) |
 | `PUBLIC_TURNSTILE_SITE_KEY` | - | 클라이언트 공개 키 (도입 시) |

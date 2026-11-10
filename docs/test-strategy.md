@@ -11,16 +11,16 @@
 | 계층 | 대상 | 방법 |
 | --- | --- | --- |
 | 단위 | GTIN 체크디지트·UPC-E 확장·접두사 분기(20~29, 978/979), URL 정규화(쿼리·프래그먼트 제거, punycode), 보안 점수·등급 경계, 단축 URL → 최소 WARNING, 색상 대비 계산, `color_hex` 검증, 금지 패턴 검사 | Vitest |
-| 계약 | 카드 4종·`ChatIntent` JSON Schema 검증, **facts 덮어쓰기**(엑사원 출력이 사실 필드를 바꾸지 못함), `narration_status`(ok/skipped/unavailable), `stale` 덧씌우기 | 스키마 검증 + 스냅샷 |
+| 계약 | 카드 4종 JSON Schema 검증, **facts 덮어쓰기**(엑사원 출력이 사실 필드를 바꾸지 못함), `narration_status`(ok/pending/skipped/unavailable) 전이, `stale`·60초 경과 `pending` 덧씌우기, 보안·QR 카드 템플릿 문구 스냅샷(`docs/security-scoring.md` 8절), 채팅 파라미터 정규화(색 이름 → hex, `bg_transparent` 무시, 코드 선분기) | 스키마 검증 + 스냅샷 |
 | 카운터 | `llm_usage` 원자 upsert(한도 도달 시 행 없음, 윈도우 전환, 환불), 세션·IP·전역 일괄 획득 | 로컬 D1(miniflare) 또는 SQLite |
 | 통합 | `/api/scan`·`/api/chat`·`/api/history`·`DELETE /api/history`·`/q/:id.svg` 흐름, 삭제 시 R2 → DB 순서, 만료 정리 | `wrangler dev` 로컬 D1/R2/KV |
 | 보안 수용 기준 | 개발 모드 해제 조건 5가지(`docs/llm-budget.md` 10절), `/q/*` 보안 헤더, SVG 주입 방지, 인젝션 문자열이 담긴 제품명 처리 | 자동 테스트 |
-| LLM(옵트인) | 실제 엑사원으로 `ChatIntent`·narration 스키마 준수율, `reasoning_effort=low` 지연 측정 | 수동 실행 스크립트, 결과를 이슈에 기록 |
+| LLM(옵트인) | 실제 엑사원으로 **채팅 도구 선택 정확도**(기준: 2026-11-10 실측 10/12)·제품 서술 스키마 준수율·환각/인젝션 케이스·영어 성분 번역 여부, 지연 측정. 실호출 측정 스크립트는 저장소 `scripts/livetest/`로 옮겨 재사용한다 (초당 1회 호출 간격 준수) | 수동 실행, 결과를 이슈에 기록 |
 | 수동 | iOS/Android 실기기 스캔(저조도, 1D), PWA 설치·오프라인 안내 | 체크리스트 |
 
 ## 3. 먼저 만들 테스트 (우선순위)
 1. **보안 점수 규칙**: `docs/security-scoring.md` 7절 골든 케이스(등급 경계, "필수 소스 실패 시 SAFE 금지", 점수 상한 100, 분류당 유도 키워드 상한)를 단위 테스트로 고정
-2. 한도 카운터와 개발 모드 해제 조건 (운영 누수 방지)
+2. 한도 카운터·**호출 간격 게이트**와 개발 모드 해제 조건 (운영 누수 방지)
 3. facts 덮어쓰기와 카드 스키마 검증
 4. URL 정규화와 외부 전송 규칙 (쿼리·프래그먼트가 나가지 않는지)
 

@@ -120,7 +120,9 @@ POST /api/chat → 엑사원(대화 맥락 + 필요 시 Tool Calling) → 도구
 이 문서를 읽은 에이전트는 아래 순서대로 작업을 이어서 진행한다.
 
 - [ ] **Step 0.1: GitHub 저장소 설정 (Section 8 참조)**
-  - 라벨·마일스톤(`Phase 1 MVP`) 생성, 로드맵 Step을 이슈로 등록, main 브랜치 보호 적용 (적용 전 저장소 공개 여부·플랜 확인).
+  - [x] 라벨 체계 적용 (기본 라벨 삭제 후 Section 8.5 체계로 재생성)
+  - [ ] 마일스톤(`Phase 1 MVP`) 생성, 로드맵 Step을 이슈로 등록
+  - [ ] main 브랜치 보호 적용 (저장소는 공개 상태 — 규칙은 Section 8.4)
 - [ ] **Step 0: 검증 스파이크 (설계 전 선행, Section 7 참조)**
   - 바코드 DB 적중률, 국내 가격 매칭 가능성, K-EXAONE 2.5 API/Tool Calling 확인, 한국 보안 신고 DB 가용성 조사.
 - [ ] **Step 0.5: API 계약 및 응답 스키마 설계** (`docs/` 아래 문서화)
@@ -204,7 +206,12 @@ POST /api/chat → 엑사원(대화 맥락 + 필요 시 Tool Calling) → 도구
 
 ### 8.5 이슈 관리
 - 로드맵 Step(Section 6)을 GitHub Issue로 등록하고 마일스톤 `Phase 1 MVP`에 묶는다.
-- 라벨: `type:*`(feat/fix/docs/chore), `area:*`(frontend/api/db/ai/security), `spike`.
+- 라벨 (저장소에 적용 완료, 이슈 하나에 `type:*` 1개 + `area:*` 1개 이상을 붙인다):
+  - `type:*`: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci` (Conventional Commits type과 동일)
+  - `area:*`: `frontend`, `api`, `db`, `ai`, `security`, `infra`
+  - 작업 성격: `spike`
+  - 우선순위: `priority:high`, `priority:low` (라벨 없음 = 보통)
+  - 상태: `blocked`, `needs-info`, `duplicate`, `wontfix`
 - 작업 시작 전에 해당 이슈가 있는지 확인하고, 범위가 바뀌면 이슈에 기록한다.
 - 스파이크 결과는 이슈에 남기고, 확정된 내용은 Section 7에 반영한다.
 - 템플릿: `task`(로드맵 Step), `bug`, `spike`. 빈 이슈는 비활성화한다.

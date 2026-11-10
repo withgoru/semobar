@@ -122,7 +122,8 @@ interface SecurityCard {
     redirect_unknown: boolean;         // 단축 URL 등 실제 도착 주소를 확인하지 못했으면 true → 카드에 "실제 도착 주소는 확인하지 못했어요" 표기
     stale?: boolean;                   // 이력 조회 시 서버가 설정: checked_at이 24시간을 넘겼으면 true
     grade: "SAFE" | "WARNING" | "DANGER";
-    risk_score: number;                // 0(안전)~100(위험), 등급 경계는 별도 문서(보안 점수 규칙)
+    risk_score: number;                // 0(안전)~100(위험). 내부용 — UI에 숫자로 노출하지 않는다. 등급 경계·신호 정의: docs/security-scoring.md
+    rules_version: string;             // 판정에 쓴 규칙 코드·데이터 버전 (재현용, docs/security-scoring.md 6절)
     signals: Array<{
       code: string;                    // 예: "GSB_MATCH", "SHORTENER", "PUNYCODE", "NEW_DOMAIN"
       severity: "info" | "warn" | "danger";
@@ -252,7 +253,7 @@ type ErrorCode =
   | "INTERNAL";          // 500
 ```
 - 엑사원 실패는 오류가 **아니다**: 카드를 `narration: null`로 정상 응답한다 (원칙 2).
-- 외부 보안 API 일부 실패 시: 가용한 신호로 등급을 계산하되 `signals`에 `SOURCE_UNAVAILABLE`을 남기고, **등급을 `SAFE`로 올리지 않는다** (실패 소스가 있으면 최대 `WARNING` 이상으로 하한을 둘지는 점수 규칙 문서에서 확정).
+- 외부 보안 API 실패 시: 가용한 신호로 등급을 계산하되 `signals`에 `SOURCE_UNAVAILABLE`을 남긴다. **필수 소스(Safe Browsing)가 실패하면 등급 하한은 `WARNING`**이고 선택 소스 실패는 점수에 영향이 없다 (`docs/security-scoring.md` 3절).
 
 ---
 
@@ -290,7 +291,7 @@ type ErrorCode =
 | 스트리밍 | **Phase 1은 비스트리밍.** 엑사원 지연을 실측한 뒤 채팅 텍스트 응답에 한해 재검토 |
 | Turnstile | 평소에는 도입하지 않고, 세션 생성 남용 또는 AI 한도 압박(L1 이상) 시에만 조건부로 요구 (`docs/llm-budget.md` 8절) |
 | 미적중 시 사용자 보정 | Phase 1 범위 밖 (구글 링크 폴백만) |
-| 보안 점수 규칙 | 이 문서 범위 밖. 별도 문서로 이어서 설계 (신호별 가중치·등급 경계·소스 실패 시 하한) |
+| 보안 점수 규칙 | `docs/security-scoring.md` 초안 (신호 카탈로그, 점수 0~29/30~69/70+, 평판 적중은 즉시 `DANGER`, 필수 소스 실패 시 하한 `WARNING`) |
 
 ---
 

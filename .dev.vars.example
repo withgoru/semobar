@@ -1,0 +1,16 @@
+# 로컬 개발용 시크릿·변수 예시. 이 파일을 `.dev.vars`로 복사해 값을 채운다 (`.dev.vars`는 git에 올리지 않는다).
+# 형식: NAME=value (따옴표 없이). 값은 저장소에 커밋하거나 화면에 출력하지 않는다.
+
+# ── 시크릿 (운영에서는 `wrangler secret put <NAME>`) ──────────────
+EXAONE_API_KEY=
+SAFE_BROWSING_API_KEY=
+# 선택
+URLHAUS_AUTH_KEY=
+UPCITEMDB_USER_KEY=
+TURNSTILE_SECRET_KEY=
+
+# ── 개발 모드 (wrangler.jsonc의 운영 기본값을 로컬에서만 덮어씀) ─────
+# APP_ENV=development 이고 LIMITS_MODE=off 이며 호스트가 localhost일 때만 앱 한도가 해제된다.
+# (제공자 429 대응과 호출 간격 게이트는 유지) → docs/llm-budget.md 10절
+APP_ENV=development
+LIMITS_MODE=off

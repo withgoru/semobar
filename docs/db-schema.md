@@ -142,10 +142,14 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 **Cloudflare 바인딩**
 | 이름 | 종류 | 용도 |
 | --- | --- | --- |
-| `DB` | D1 | 세션·메시지·QR 메타·AI 카운터·narration 캐시 |
-| `BUCKET` | R2 | 생성된 QR SVG |
-| `CACHE` | KV | 외부 조회 캐시, AI 상태, 차단 목록 |
-| `REQ_LIMITER` | Rate Limiting | 일반 요청 빈도 제한 (사용 가능 여부는 구현 단계에서 확인) |
+| `DB` | D1 (`semoba-db`, 마이그레이션 `migrations/`) | 세션·메시지·QR 메타·AI 카운터·narration 캐시 |
+| `BUCKET` | R2 (`semoba-qr`) | 생성된 QR SVG |
+| `CACHE` | KV | 외부 조회 캐시, `pause_until`, 차단 목록 |
+| `REQ_LIMITER` | Rate Limiting (분당 30) | 스캔 등 일반 요청 빈도 제한 |
+| `CHAT_LIMITER` | Rate Limiting (분당 10) | 채팅 요청 빈도 제한 |
+
+- Rate Limiting 바인딩은 기간을 **10초 또는 60초**만 지원하고 바인딩마다 한도가 하나다. 그래서 채팅용 `CHAT_LIMITER`를 따로 두고, **시간당 신규 세션 제한(IP당 20회)은 D1 카운터**(`ip:newsession:hour`, `docs/llm-budget.md` 3절)로 처리한다. 한도는 키(세션 ID 또는 IP 해시)마다 적용되며 데이터센터별 근사치다.
+- 리소스 ID(D1 `database_id`, KV `id`)는 `wrangler.jsonc`에 두지 않는다. 로컬(`wrangler dev`)은 시뮬레이션하고, 배포 시 자동 프로비저닝한다 (이슈 #42).
 
 **시크릿** (`wrangler secret put`, 로컬은 `.dev.vars`)
 | 이름 | 필수 | 용도 |
@@ -167,9 +171,11 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 | `APP_ENV`, `LIMITS_MODE` | `production`, `enforce` | 개발 중에는 `.dev.vars`에서만 `development`, `off`로 덮어써 한도를 해제 (`docs/llm-budget.md` 10절) |
 | `PUBLIC_TURNSTILE_SITE_KEY` | - | 클라이언트 공개 키 (도입 시) |
 
-**로컬 개발 주의**
-- `@sveltejs/adapter-cloudflare` 로컬 개발은 `.env`가 아니라 **`.dev.vars`** 의 `NAME=value` 형식 값을 `platform.env`로 주입한다. `.dev.vars`는 `.gitignore`에 포함돼 있다 (AGENTS.md 8.7).
-- 현재 `.env`는 변수 이름 없이 키 문자열만 있어 그대로는 읽을 수 없다. `EXAONE_API_KEY=<키>` 형식의 `.dev.vars`로 옮긴다.
+**시크릿 등록 절차**
+- **로컬:** `.dev.vars.example`을 `.dev.vars`로 복사해 값을 채운다. `NAME=value` 형식이며 `.dev.vars`는 git에 올리지 않는다 (AGENTS.md 8.7). `.dev.vars`의 `APP_ENV`·`LIMITS_MODE`는 `wrangler.jsonc`의 운영 기본값을 로컬에서만 덮어쓴다.
+- **운영:** 시크릿마다 `npx wrangler secret put EXAONE_API_KEY`처럼 등록한다 (값은 프롬프트에 직접 입력, 명령줄 인자나 파일로 넘기지 않는다). `npx wrangler secret list`로 이름만 확인한다. 필수는 `EXAONE_API_KEY`, `SAFE_BROWSING_API_KEY`이고 나머지는 선택이다.
+- **타입:** `wrangler types`는 `.dev.vars`에 있는 이름만 `Env`에 넣어 로컬과 CI의 결과가 달라지므로, 시크릿 이름은 `src/app.d.ts`에서 `Env`에 직접 선언한다. 코드에서는 `secret(env, 'NAME')`(`src/lib/server/config.ts`)로 읽으며 값이 비어 있으면 `null`이다. 생성 타입 파일(`worker-configuration.d.ts`)은 커밋하지 않는다 (`npm run gen`).
+- **설정 읽기:** 일반 변수는 모두 문자열이며 `loadConfig(env)`가 숫자·열거형으로 해석한다. 알 수 없는 `APP_ENV`·`LIMITS_MODE`는 운영·한도 적용으로 대체되고, 숫자 오류는 변수 이름만 담은 `ConfigError`로 알린다.
 
 ---
 

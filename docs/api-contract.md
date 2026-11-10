@@ -304,7 +304,7 @@ type ErrorCode =
 
 ## 7. 레이트 리밋과 AI 사용량
 
-- **일반 요청 빈도**(근사치로 충분): Workers Rate Limiting 바인딩(`REQ_LIMITER`).
+- **일반 요청 빈도**(근사치로 충분): Workers Rate Limiting 바인딩 — `REQ_LIMITER`(분당 30), `CHAT_LIMITER`(분당 10). 바인딩은 10초·60초 기간만 지원해 **시간당 신규 세션 제한은 D1 카운터**로 처리한다.
 
 | 대상 | 기준 | 한도(초안) |
 | --- | --- | --- |

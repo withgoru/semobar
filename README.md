@@ -87,14 +87,13 @@ SvelteKit + Cloudflare 풀스택 서버리스.
 ## 개발 환경
 
 - Node.js 22.12 이상, npm. 로컬에서는 `wrangler`가 D1·R2·KV를 시뮬레이션하므로 Cloudflare 리소스를 만들지 않아도 시작할 수 있습니다.
-- 시크릿은 **`.dev.vars`**(`NAME=value` 형식, git 제외)에 둡니다. 키 값은 저장소에 커밋하거나 화면에 출력하지 않습니다.
+- 시크릿은 **`.dev.vars`**(`NAME=value` 형식, git 제외)에 둡니다. `.dev.vars.example`을 복사해 값을 채우세요. 키 값은 저장소에 커밋하거나 화면에 출력하지 않습니다.
 
+```bash
+cp .dev.vars.example .dev.vars   # 이후 EXAONE_API_KEY 등 값 입력
 ```
-# .dev.vars (예시: 값은 직접 채웁니다)
-EXAONE_API_KEY=
-APP_ENV=development
-LIMITS_MODE=off        # 개발 모드에서만 앱 한도 해제 (docs/llm-budget.md 10절)
-```
+
+`APP_ENV=development`, `LIMITS_MODE=off`는 개발 모드에서만 앱 한도를 해제합니다 (`docs/llm-budget.md` 10절). 운영 기본값은 `wrangler.jsonc`에 있습니다.
 
 ```bash
 npm install            # 의존성 설치 (prepare 단계에서 Cloudflare 타입 생성)
@@ -107,7 +106,7 @@ npm test               # Vitest
 npm run gen            # wrangler.jsonc 변경 후 Cloudflare 타입(worker-configuration.d.ts) 재생성
 ```
 
-`worker-configuration.d.ts`는 생성 파일이라 커밋하지 않습니다.
+`worker-configuration.d.ts`는 생성 파일이라 커밋하지 않습니다. Cloudflare 바인딩과 변수 정의는 `wrangler.jsonc`, 시크릿 목록과 등록 절차는 `docs/db-schema.md` 6절을 참고하세요.
 
 ## 기여 방식
 

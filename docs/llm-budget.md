@@ -136,13 +136,63 @@ RETURNING count;
 | `LLM_SESSION_SCAN_DAILY` | `60` | 세션 스캔 서술 일 |
 | `LLM_IP_MULTIPLIER` | `3` | IP 한도 = 세션 한도 × 배수 |
 | `LLM_TIMEOUT_MS` | `10000` | 호출 타임아웃 (스캔 서술은 8000) |
+| `APP_ENV` | `production` | `production` / `staging` / `development` (10절) |
+| `LIMITS_MODE` | `enforce` | `enforce` / `off` — `off`는 로컬 개발에서만 유효 (10절) |
+| `LLM_DEV_WARN_PER_MIN` | `30` | 제한 해제 상태에서 분당 호출이 이 값을 넘으면 경고 로그만 출력 |
 | `LLM_NARRATION_MAX_TOKENS` / `LLM_CHAT_MAX_TOKENS` | `300` / `600` | 출력 상한 |
 
 `db-schema.md`의 `EXAONE_DAILY_CALL_LIMIT`는 위 `EXAONE_RPD_LIMIT` × `LLM_SAFETY_RATIO`로 대체한다.
 
 ---
 
-## 10. 열린 질문 (리뷰 요청)
+## 10. 개발·디버그 모드 (제한 해제)
+
+개발 중에는 계속 테스트해야 하므로 **앱이 거는 한도는 적용하지 않는다.** 대신 운영에 새지 않도록 이중 장치를 둔다.
+
+### 설정과 해제 조건
+- `wrangler.toml`의 기본값은 `APP_ENV=production`, `LIMITS_MODE=enforce`다.
+- 로컬 `.dev.vars`(배포되지 않는 파일)에만 `APP_ENV=development`, `LIMITS_MODE=off`를 둔다.
+- **제한 해제는 세 조건이 모두 참일 때만** 동작한다: `APP_ENV=development` **그리고** `LIMITS_MODE=off` **그리고** 요청 호스트가 `localhost` / `127.0.0.1` / `[::1]`. 하나라도 어긋나면 `enforce`로 동작한다.
+- 운영(`production`·`staging`)에서 `LIMITS_MODE=off`가 감지되면 **무시하고 `enforce`로 동작**하며 오류 로그를 남긴다.
+- 해제 상태로 시작할 때 `⚠ LIMITS OFF (development)` 경고 로그를 출력한다.
+
+### 해제 범위
+| 항목 | `LIMITS_MODE=off` 일 때 |
+| --- | --- |
+| 세션·IP·전역 AI 한도 (`llm_usage`) | 검사·카운트를 건너뛴다 |
+| 일반 요청 빈도 (`REQ_LIMITER`), 신규 세션 생성 제한, Turnstile | 건너뛴다 |
+| 단계적 축소(L1~L3) 자동 전환 | 하지 않는다 (필요하면 아래 디버그 헤더로 강제) |
+| **제공자(엑사원)의 429** | **유지한다.** 제공자 한도는 앱 설정으로 풀 수 없다. 429를 받으면 `retry-after`만큼 템플릿 응답으로 대체하고 로그에 명확히 표시한다 |
+| 입력 길이·출력 상한·스키마 검증, 보안 검증 | 유지한다 (한도가 아니라 안전 제약) |
+
+### 개발 전용 디버그 헤더
+해제 조건이 충족된 경우에만 처리하고, 그 밖에서는 **무시**한다.
+| 헤더 | 용도 |
+| --- | --- |
+| `X-Debug-Degrade: L1\|L2\|L3` | 단계적 축소 상태를 강제해 UI·폴백 동작을 확인 |
+| `X-Debug-No-Cache: 1` | narration 캐시를 우회해 실제 엑사원 호출을 확인 |
+| `X-Debug-Quota-Used: <n>` | 응답의 `quota.used`를 가정해 한도 임박 UI를 확인 |
+
+### 응답·UI
+- 해제 상태에서는 응답의 `quota.limit = null`, `quota.debug = true`로 내려 UI가 "개발 모드: 제한 없음"을 표시한다 (`api-contract.md` `AiQuota`).
+
+### 폭주 보호 (차단이 아니라 경고)
+- 한도를 풀어 둔 상태에서 버그로 무한 루프가 돌면 제공자의 실제 한도를 소진할 수 있다. 분당 호출이 `LLM_DEV_WARN_PER_MIN`(기본 30)을 넘으면 **차단하지 않고 콘솔 경고만** 출력한다.
+
+### 한도 로직 자체의 테스트
+- 한도·단계적 축소 로직은 단위 테스트에서 설정 값을 주입(예: 세션 채팅 일 한도 3)해 `enforce`로 검증한다. 디버그 해제와 무관하게 동작해야 한다.
+- 수동으로 확인할 때는 `.dev.vars`에서 `LIMITS_MODE=enforce`와 작은 한도 값으로 잠시 바꾼다.
+
+### 수용 기준 (구현 시 테스트로 확인)
+1. `APP_ENV=production`에서 `LIMITS_MODE=off`여도 한도가 적용되고 오류 로그가 남는다.
+2. 호스트가 로컬이 아니면 `development` + `off`여도 한도가 적용된다.
+3. 해제 상태에서 한 세션이 채팅 100회를 보내도 거부되지 않는다 (제공자 429가 없는 경우).
+4. 디버그 헤더는 해제 조건 밖에서는 효과가 없다.
+5. 해제 상태 응답의 `quota.limit`은 `null`이다.
+
+---
+
+## 11. 열린 질문 (리뷰 요청)
 
 1. **제공자 실제 한도:** 초/분/일 단위 수치와 토큰 한도 유무, 무료 기간. 콘솔에서 확인한 값이 필요하다.
 2. **목표 사용자 규모:** 일일 활성 사용자 수 추정치(초기 비공개 베타면 수십 명 수준). 세션 한도 산정에 쓴다.

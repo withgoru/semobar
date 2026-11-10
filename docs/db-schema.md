@@ -155,6 +155,7 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 | `EXAONE_REASONING_EFFORT` | `low` | 추론 강도 |
 | `EXAONE_RPM_LIMIT`, `EXAONE_RPD_LIMIT` | 콘솔 확인 후 입력 | 제공자 분·일 한도 |
 | `LLM_SAFETY_RATIO` 외 `LLM_*` | `docs/llm-budget.md` 9절 | 세션·IP 한도, 타임아웃, 출력 상한 |
+| `APP_ENV`, `LIMITS_MODE` | `production`, `enforce` | 개발 중에는 `.dev.vars`에서만 `development`, `off`로 덮어써 한도를 해제 (`docs/llm-budget.md` 10절) |
 | `PUBLIC_TURNSTILE_SITE_KEY` | - | 클라이언트 공개 키 (도입 시) |
 
 **로컬 개발 주의**

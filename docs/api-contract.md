@@ -44,7 +44,8 @@ type NarrationStatus = "ok" | "unavailable";                         // unavaila
 // /api/scan·/api/chat 응답에 항상 포함되는 AI 사용량 (UI의 "오늘 AI 대화 N/M" 표시용, docs/llm-budget.md)
 interface AiQuota {
   used: number;                 // 오늘 사용한 채팅 횟수
-  limit: number;                // 세션 일 한도
+  limit: number | null;         // 세션 일 한도. null = 개발 모드(제한 해제, docs/llm-budget.md 10절)
+  debug?: boolean;              // 개발 모드일 때만 true
   resets_at: ISODate;           // 다음 KST 자정
   degraded: boolean;            // 전체 한도 압박(L1 이상)으로 AI 기능이 축소 중
 }

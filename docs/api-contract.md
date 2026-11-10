@@ -39,11 +39,14 @@ type ScanFormat =
 
 // assistant 측
 type AssistantCard = TextCard | ProductCard | SecurityCard | QrCard;
-type NarrationStatus = "ok" | "unavailable";                         // unavailable = 엑사원 실패·생략·한도 초과
+// ok: 엑사원 서술이 채워짐
+// skipped: 템플릿으로 충분해 **의도적으로 생략**(미적중·비-URL·입력 오류 등) → UI는 안내 문구를 띄우지 않는다
+// unavailable: 실패·한도 초과·AI 중단으로 서술을 못 받음 → UI가 "AI 설명은 잠시 제공되지 않아요"를 작게 표시
+type NarrationStatus = "ok" | "skipped" | "unavailable";
 
 // /api/scan·/api/chat 응답에 항상 포함되는 AI 사용량 (UI의 "오늘 AI 대화 N/M" 표시용, docs/llm-budget.md)
 interface AiQuota {
-  used: number;                 // 오늘 사용한 채팅 횟수
+  used: number;                 // 오늘 사용한 채팅 횟수. **사용자 메시지 1건 = 1** (내부 엑사원 호출이 2번이어도 1)
   limit: number | null;         // 세션 일 한도. null = 개발 모드(제한 해제, docs/llm-budget.md 10절)
   debug?: boolean;              // 개발 모드일 때만 true
   resets_at: ISODate;           // 다음 KST 자정
@@ -105,7 +108,7 @@ interface ProductCard {
   };
 }
 ```
-- `status: "not_found"`이면 `product`·`source`는 없고 `search_links`에 **바코드 번호 검색 링크**만 담는다. `narration`은 만들지 않고 `text` 안내문은 `narration_status: "unavailable"`이어도 UI가 고정 문구를 보여 준다.
+- `status: "not_found"`이면 `product`·`source`는 없고 `search_links`에 **바코드 번호 검색 링크**만 담는다. `narration`은 만들지 않고 `narration_status: "skipped"`로 내린다. 안내 문구는 UI의 고정 문구를 쓴다.
 - 구글 검색 질의: `found` → `"{brand} {name}"`, `not_found` → `"{gtin}"`.
 
 ### 3.3 `security_card`
@@ -115,7 +118,9 @@ interface SecurityCard {
   narration_status: NarrationStatus;
   facts: {
     url: string;                       // 스캔된 원본
-    final_domain: string;              // 표시용 (punycode 디코딩 + 원형 병기)
+    display_domain: string;            // URL의 호스트 표시용 (punycode 디코딩 + 원형 병기). 리다이렉션을 따라가지 않으므로 "최종 도착 주소"가 아니다
+    redirect_unknown: boolean;         // 단축 URL 등 실제 도착 주소를 확인하지 못했으면 true → 카드에 "실제 도착 주소는 확인하지 못했어요" 표기
+    stale?: boolean;                   // 이력 조회 시 서버가 설정: checked_at이 24시간을 넘겼으면 true
     grade: "SAFE" | "WARNING" | "DANGER";
     risk_score: number;                // 0(안전)~100(위험), 등급 경계는 별도 문서(보안 점수 규칙)
     signals: Array<{
@@ -126,7 +131,8 @@ interface SecurityCard {
     sources: Array<{ id: string; name: string; attribution?: string }>;   // 예: Google 데이터 사용 시 attribution="Advisory provided by Google"
     checked_at: ISODate;
     actions: {
-      open_enabled: boolean;           // SAFE=true / WARNING=true(requires_confirm) / DANGER=false
+      open_enabled: boolean;           // SAFE=true / WARNING=true(requires_confirm) / DANGER=false. stale이면 항상 false
+      requires_reverify?: boolean;     // stale일 때 true → UI는 이동 대신 "다시 검사" 버튼(POST /api/scan 재호출)을 보여 준다
       requires_confirm: boolean;       // WARNING일 때 true
       qr_generation_allowed: boolean;  // SAFE일 때만 true
     };
@@ -140,6 +146,8 @@ interface SecurityCard {
 }
 ```
 - 엑사원은 `grade`를 입력으로 받을 뿐 출력하지 않는다. 서버는 `narration`에 등급 단정 표현("안전합니다", "100% 안전")이 들어 있는지 검사하고 있으면 템플릿 문구로 교체한다.
+- **단축 URL은 최소 `WARNING`**이다 (도착 주소를 모르므로 `redirect_unknown=true`, 신호 `SHORTENER`). `SAFE` 카드에서도 `display_domain`을 크게 보여 주되 "도착 주소 확인 불가" 여부를 함께 표기한다.
+- **낡은 안전 판정을 재사용하지 않는다.** 저장된 카드의 `actions`는 판정 시점 값이다. `GET /api/history`는 `checked_at`이 24시간을 넘긴 보안 카드에 `stale=true`, `open_enabled=false`, `requires_reverify=true`를 덧씌워 내려준다 (DB 저장 값은 바꾸지 않는다).
 
 ### 3.4 `qr_card`
 ```ts
@@ -178,7 +186,9 @@ interface QrCard {
 분기 (코드):
 | 조건 | 처리 | 결과 카드 |
 | --- | --- | --- |
-| 1D 포맷 + 체크디지트 유효 | GTIN 13자리 정규화 → 제품 조회 | `product_card` |
+| 1D 포맷 + 체크디지트 유효 + 접두사 `20`~`29` | 매장 자체 코드라 조회하지 않음 | `product_card` (`not_found`, `skipped`, "매장 자체 바코드예요" 문구) |
+| 1D 포맷 + 체크디지트 유효 + 접두사 `978`/`979` | 도서(ISBN): Open Food Facts는 건너뛰고 UPCitemdb만 조회 | `product_card` |
+| 1D 포맷 + 체크디지트 유효 (그 외) | GTIN 13자리 정규화 → 제품 조회 | `product_card` |
 | 1D 포맷 + 체크디지트 불일치 | 재스캔 안내 (엑사원 호출 없음) | `text` (template) |
 | `QR_CODE` + `http(s)://` URL | 보안 검증 | `security_card` |
 | `QR_CODE` + 그 외 (Wi-Fi, vCard 등) | 원문 표시, 자동 실행 안 함 | `text` (+`payload`) |
@@ -193,12 +203,26 @@ interface QrCard {
 { messages: [Message /*user:text*/, Message /*assistant: 위 4종 중 하나*/, Message?]; quota: AiQuota }
 ```
 - 맥락: 같은 세션의 **최근 8개 메시지**를 서버가 D1에서 읽어 엑사원에 전달한다(카드 메시지는 `facts` 요약만, `docs/llm-budget.md` 2절). 클라이언트가 맥락을 보내지 않는다.
-- 사용 가능한 도구(채팅 경로 한정): `search_global_product`, `verify_url_security`, `generate_custom_qr` — 입력 스키마는 엑사원 모듈 설계 단계에서 확정.
+- **제공자 기능에 의존하지 않는다.** Tool Calling·Structured Outputs의 동작은 실호출로 검증되기 전까지 전제하지 않는다. 서버가 코드로 먼저 처리한다:
+  1. 메시지 안의 URL은 정규식으로 추출한다 (엑사원에 URL 원문을 보내지 않고 쿼리·프래그먼트는 마스킹).
+  2. 제품 꼬리 질문은 맥락의 카드 `facts` 요약만으로 답한다 (도구 호출 없음). **`search_global_product`는 스캔 경로 전용이며 채팅에서 호출하지 않는다.**
+  3. QR 생성처럼 의도·파라미터 추출이 필요할 때만 엑사원이 아래 `ChatIntent` JSON을 반환하고, 서버가 스키마로 검증한 뒤 **코드가 실행**한다. 검증 실패 시 1회 재시도, 그래도 실패하면 안내 문구.
+  ```ts
+  type ChatIntent =
+    | { intent: "answer"; reply: string }                       // facts 범위 안의 일반 답변
+    | { intent: "verify_url"; url: string }                     // → verify_url_security (코드)
+    | { intent: "create_qr"; url: string; color_hex?: string; bg_transparent?: boolean }   // → generate_custom_qr (코드)
+    | { intent: "out_of_scope" };                               // 범위 밖 질문 → 템플릿 안내
+  ```
+  제공자가 Tool Calling을 안정적으로 지원하는 것으로 확인되면 같은 `ChatIntent` 검증 계층 뒤에 교체할 수 있다.
+- 응답의 세 번째 `Message`는 보조 assistant 카드다 (예: QR 거부 시 사유를 설명하는 `security_card`).
+- 한도 계산: 사용자 메시지 1건 = 채팅 사용량 1이다 (의도 해석과 서술이 각각 호출돼도 1). 전역 카운터만 실제 호출 수를 센다 (`docs/llm-budget.md` 3절).
 - **Phase 1은 스트리밍을 하지 않는다**(구조화 응답 + 서버 검증·병합 때문). 클라이언트는 "입력 중" 표시를 보여 준다. 지연 실측 후 재검토.
 
 ### 4.3 `GET /api/history?cursor=<ULID>&limit=20`
 ```ts
 // Response 200 — 최신 → 과거 순, 클라이언트가 뒤집어 표시
+// 보안 카드는 checked_at이 24시간을 넘기면 서버가 stale/requires_reverify를 덧씌워 내려준다 (3.3절)
 { messages: Message[]; next_cursor: ULID | null }
 ```
 - 쿼리: `WHERE session_id = ? AND id < :cursor ORDER BY id DESC LIMIT :limit` (`limit` 최대 50).
@@ -267,3 +291,23 @@ type ErrorCode =
 | Turnstile | 평소에는 도입하지 않고, 세션 생성 남용 또는 AI 한도 압박(L1 이상) 시에만 조건부로 요구 (`docs/llm-budget.md` 8절) |
 | 미적중 시 사용자 보정 | Phase 1 범위 밖 (구글 링크 폴백만) |
 | 보안 점수 규칙 | 이 문서 범위 밖. 별도 문서로 이어서 설계 (신호별 가중치·등급 경계·소스 실패 시 하한) |
+
+---
+
+## 9. 개인정보·외부 전송 규칙
+
+QR의 URL에는 비밀번호 재설정·로그인 토큰·결제 식별자가 들어 있을 수 있다. 사용자가 스캔한 값을 제3자에 그대로 보내거나 오래 보관하지 않는다.
+
+1. **외부 보안 소스(Safe Browsing, URLhaus, RDAP)에는 `scheme://host/path`만 보낸다.** 쿼리(`?…`)와 프래그먼트(`#…`)는 제거한다. 일부 정확도 저하는 감수한다. 더 높은 프라이버시가 필요하면 Safe Browsing **Update API(해시 접두사 방식)** 로 전환한다 (Lookup API는 전체 URL을 Google에 보낸다).
+2. **엑사원에는 URL을 보내지 않는다.** 보안 카드 서술에는 `grade`와 신호 코드만 전달한다. 채팅 입력에 URL이 있으면 모델 전송 전에 쿼리·프래그먼트를 마스킹한다.
+3. **저장본은 정규화한다.** 응답 카드(`facts.url`)에는 이동에 필요한 원본을 담아 이번 응답에만 쓰고, **DB에는 쿼리·프래그먼트를 제거한 URL을 저장**한다 (`messages.content`의 `scan.raw`, `security_card.facts.url`). 그래서 이력에서 열 때는 정규화 URL이며 `requires_reverify`가 켜진다. 예외: QR 생성은 사용자가 의도해 만든 URL이므로 `qr_assets.target_url`은 원본을 저장하고 90일 뒤 삭제한다.
+4. **개인정보 처리 안내**를 서비스에 둔다: 스캔한 URL이 보안 조회를 위해 외부 서비스(예: Google Safe Browsing)에 전달될 수 있음, 비-URL QR 원문은 저장하지 않음, 보관 기간과 삭제 방법.
+5. 로그에는 스캔 원문·URL·IP 원문을 남기지 않는다 (IP는 해시, URL은 호스트만).
+
+---
+
+## 10. PWA 캐싱 규칙
+
+- Service Worker는 **정적 자산(앱 셸, 스캐너 wasm)만 precache**한다.
+- `/api/*`와 `/q/*`는 **network-only**로 처리한다 (이력·보안 판정·QR 이미지를 오프라인 캐시에서 내주지 않는다). 오프라인이면 "인터넷 연결이 필요해요" 안내를 보여 준다.
+- `zxing-wasm`(약 1~1.5MiB)은 스캐너를 처음 열 때 지연 로딩하고 이후 캐시한다.

@@ -106,9 +106,10 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 - **만료 정리:** Cron Trigger가 매일 새벽 1회 실행한다.
   1. `expires_at < now`인 세션의 `qr_assets.r2_key`를 조회해 R2 객체 삭제
   2. 만료 `qr_assets`(세션은 살아 있어도 `expires_at` 경과) 삭제
-  3. 만료 세션 삭제 (messages·qr_assets는 CASCADE)
+  3. 만료 세션 삭제 (messages·qr_assets는 CASCADE). 대량 삭제가 D1 쿼리 시간 제한에 걸리지 않도록 **1,000행 단위 배치**로 반복한다
   4. 이틀 지난 `llm_usage` 윈도우, 만료된 `narration_cache` 삭제
-- **민감 정보:** 비-URL QR 원문은 저장하지 않으며 로그에도 남기지 않는다. IP는 해시로만 사용한다.
+- **민감 정보:** 비-URL QR 원문은 저장하지 않으며 로그에도 남기지 않는다. IP는 해시로만 사용한다. URL 스캔은 **쿼리·프래그먼트를 제거한 정규화 URL**만 저장한다 (`docs/api-contract.md` 9절).
+- **Cron 구현 주의:** `@sveltejs/adapter-cloudflare`가 `scheduled` 핸들러를 직접 노출하지 않을 수 있다. Step 1에서 확인하고, 불가하면 정리 작업 전용 별도 Worker(같은 D1·R2 바인딩 공유)로 분리한다.
 
 ---
 
@@ -119,12 +120,13 @@ CREATE INDEX idx_narration_cache_expires ON narration_cache (expires_at);
 | `gtin:{gtin13}` | 제품 조회 결과(found/not_found, source) | found 7일 / not_found 1일 | Open Food Facts 조회 한도(IP당 분당 15회) 보호 |
 | `sec:{sha256(normalized_url)}` | 외부 보안 소스 응답(신호 목록) | 1시간 | Safe Browsing 캐시 유효 시간 준수 |
 | `rdap:{domain}` | 등록일·레지스트라 | 7일 | 등록일은 거의 변하지 않음 |
-| `llm:state` | AI 상태(L0~L3, `pause_until`) | 60초 | 상태 변경 시에만 기록 (`docs/llm-budget.md` 5·6절) |
+| `llm:pause_until` | 제공자 429·서킷 브레이커로 AI 호출을 멈추는 시각 | `retry-after`(5초~5분) | 단계(L0~L3)는 KV가 아니라 D1 카운터에서 계산 (`docs/llm-budget.md` 5·6절) |
 | `block:ip:{hash}` | 쿨다운 차단 | 24시간 | 반복 한도 도달 IP |
 
 - **일반 요청 레이트 리밋**(스캔·채팅 요청 빈도, 근사치로 충분한 용도)은 Workers Rate Limiting 바인딩을 사용한다. 정확해야 하는 AI 호출 카운터는 D1(`llm_usage`)을 쓴다.
 - **URLhaus는 덤프를 동기화하지 않고 조회 API로 호출한다.** 덤프를 KV/D1에 적재하면 수십만 행을 주기적으로 써야 해서 무료 쓰기 한도를 넘는다. 조회 엔드포인트 사양과 한도는 구현 단계에서 확인한다.
 - 캐시된 외부 응답에 사용자별 정보가 섞이지 않도록 키에 세션 정보를 넣지 않는다.
+- **ODbL 확인 필요:** Open Food Facts 조회 결과를 KV·`narration_cache`에 저장하는 것이 ODbL의 "파생 데이터베이스"(동일 조건 공유 의무)에 해당하는지 확인한다. 해당하면 출처 표기와 공유 의무를 이행하거나 저장 범위를 줄인다. (AGENTS.md "남은 검증"에 추가 예정)
 
 ---
 

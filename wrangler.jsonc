@@ -9,5 +9,50 @@
 		"directory": ".svelte-kit/cloudflare"
 	},
 	"workers_dev": true,
-	"preview_urls": true
+	"preview_urls": true,
+
+	// ── 바인딩 (docs/db-schema.md 6절) ─────────────────────────────
+	// 리소스 ID는 두지 않는다: 로컬(wrangler dev)은 시뮬레이션, 배포 시 자동 프로비저닝 (이슈 #42)
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "semoba-db",
+			"migrations_dir": "migrations"
+		}
+	],
+	"r2_buckets": [{ "binding": "BUCKET", "bucket_name": "semoba-qr" }],
+	"kv_namespaces": [{ "binding": "CACHE" }],
+	// 일반 요청 빈도 제한 (근사치). AI 호출 한도는 D1 카운터가 맡는다 (docs/llm-budget.md)
+	"ratelimits": [
+		{ "name": "REQ_LIMITER", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
+		{ "name": "CHAT_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }
+	],
+
+	// ── 일반 변수 (비밀 아님, 모두 문자열) ──────────────────────────
+	// 로컬 개발에서는 .dev.vars가 같은 이름의 값을 덮어쓴다 (APP_ENV, LIMITS_MODE 등).
+	// 기본값은 운영 안전: APP_ENV=production, LIMITS_MODE=enforce (docs/llm-budget.md 10절)
+	"vars": {
+		"APP_ENV": "production",
+		"LIMITS_MODE": "enforce",
+
+		// 엑사원 (docs/api-contract.md 6절, docs/llm-budget.md 0절)
+		"EXAONE_BASE_URL": "https://api.exaone.ai/v1",
+		"EXAONE_MODEL": "k-exaone_v2.5",
+		"EXAONE_REASONING_EFFORT": "low",
+		"EXAONE_RPM_LIMIT": "60",
+		"EXAONE_RPD_LIMIT": "86400",
+		"EXAONE_MIN_INTERVAL_MS": "1200",
+
+		// AI 호출 한도·타임아웃·출력 상한 (docs/llm-budget.md 3·5·9절)
+		"LLM_SAFETY_RATIO": "0.8",
+		"LLM_SESSION_CHAT_PER_MIN": "5",
+		"LLM_SESSION_CHAT_DAILY": "20",
+		"LLM_SESSION_SCAN_DAILY": "60",
+		"LLM_IP_MULTIPLIER": "3",
+		"LLM_CHAT_TIMEOUT_MS": "20000",
+		"LLM_NARRATION_TIMEOUT_MS": "30000",
+		"LLM_CHAT_MAX_TOKENS": "1200",
+		"LLM_NARRATION_MAX_TOKENS": "1500",
+		"LLM_DEV_WARN_PER_MIN": "30"
+	}
 }

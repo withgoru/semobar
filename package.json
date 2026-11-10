@@ -22,7 +22,7 @@
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
-		"gen": "wrangler types --include-main-module=false"
+		"gen": "wrangler types --include-main-module=false --strict-vars=false"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

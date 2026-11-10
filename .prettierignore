@@ -1,0 +1,19 @@
+# Package Managers
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock
+bun.lockb
+
+# Miscellaneous
+/static/
+
+# 손으로 정리한 문서·GitHub 템플릿 (표 정렬 등 문서 스타일 유지)
+*.md
+/docs/
+/.github/
+
+# 생성 파일
+worker-configuration.d.ts
+/.svelte-kit/
+/.wrangler/

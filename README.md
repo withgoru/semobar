@@ -2,7 +2,7 @@
 
 > 바코드와 QR을 찍으면 **제품 정보를 한글로 설명**하고, QR 링크는 **열기 전에 위험도부터 알려 주는** 메신저형 PWA.
 
-**상태:** 설계 완료 · 구현 준비 중 (Phase 1 MVP). 아직 실행 가능한 코드는 없습니다.
+**상태:** 설계 완료 · 구현 시작 (Phase 1 MVP). 프로젝트 골격(SvelteKit + Cloudflare Workers)까지 준비됐고 기능은 이슈 순서대로 구현합니다.
 
 ---
 
@@ -84,11 +84,9 @@ SvelteKit + Cloudflare 풀스택 서버리스.
 | Step 5 | 프론트엔드 (채팅 UI, 카드, 스캐너, PWA) |
 | Step 6 | CI, 배포, 비공개 베타 |
 
-## 개발 환경 (구현 시작 후)
+## 개발 환경
 
-> 아직 코드가 없어 실행할 수 없습니다. 아래는 계획된 방식입니다.
-
-- Node.js, Cloudflare `wrangler`. 로컬에서는 `wrangler dev`가 D1·R2·KV를 시뮬레이션하므로 Cloudflare 리소스를 만들지 않아도 시작할 수 있습니다.
+- Node.js 22.12 이상, npm. 로컬에서는 `wrangler`가 D1·R2·KV를 시뮬레이션하므로 Cloudflare 리소스를 만들지 않아도 시작할 수 있습니다.
 - 시크릿은 **`.dev.vars`**(`NAME=value` 형식, git 제외)에 둡니다. 키 값은 저장소에 커밋하거나 화면에 출력하지 않습니다.
 
 ```
@@ -97,6 +95,19 @@ EXAONE_API_KEY=
 APP_ENV=development
 LIMITS_MODE=off        # 개발 모드에서만 앱 한도 해제 (docs/llm-budget.md 10절)
 ```
+
+```bash
+npm install            # 의존성 설치 (prepare 단계에서 Cloudflare 타입 생성)
+npm run dev            # 개발 서버 (Vite) http://localhost:5173
+npm run build          # 프로덕션 빌드 (adapter-cloudflare)
+npm run preview        # 빌드 결과를 Workers 런타임(wrangler dev)으로 실행 http://localhost:4173
+npm run lint           # prettier + eslint
+npm run check          # 타입 생성 + svelte-check
+npm test               # Vitest
+npm run gen            # wrangler.jsonc 변경 후 Cloudflare 타입(worker-configuration.d.ts) 재생성
+```
+
+`worker-configuration.d.ts`는 생성 파일이라 커밋하지 않습니다.
 
 ## 기여 방식
 

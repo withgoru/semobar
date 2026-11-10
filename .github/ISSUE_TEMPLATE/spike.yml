@@ -1,0 +1,24 @@
+name: Spike
+description: 미검증 가정을 확인하는 조사 작업 (AGENTS.md Section 7)
+title: "[Spike] "
+labels: ["spike"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: 검증할 질문
+    validations:
+      required: true
+  - type: textarea
+    id: method
+    attributes:
+      label: 검증 방법
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: 판단 기준
+      description: 결과에 따라 설계가 어떻게 바뀌는지
+    validations:
+      required: true

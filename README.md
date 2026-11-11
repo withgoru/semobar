@@ -102,7 +102,8 @@ npm run build          # 프로덕션 빌드 (adapter-cloudflare)
 npm run preview        # 빌드 결과를 Workers 런타임(wrangler dev)으로 실행 http://localhost:4173
 npm run lint           # prettier + eslint
 npm run check          # 타입 생성 + svelte-check
-npm test               # Vitest
+npm test               # Vitest (실제 API를 부르는 테스트는 건너뜀)
+npm run test:live      # 엑사원 실호출 테스트 (옵트인, .dev.vars의 키 사용, 호출 간격 준수)
 npm run gen            # wrangler.jsonc 변경 후 Cloudflare 타입(worker-configuration.d.ts) 재생성
 npm run db:migrate:local   # D1 마이그레이션을 로컬 D1에 적용
 npm run db:reset:local     # 로컬 D1 초기화 후 다시 적용

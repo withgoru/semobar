@@ -24,7 +24,8 @@
 		"test": "npm run test:unit -- --run",
 		"gen": "wrangler types --include-main-module=false --strict-vars=false",
 		"db:migrate:local": "wrangler d1 migrations apply DB --local",
-		"db:reset:local": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local"
+		"db:reset:local": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local",
+		"test:live": "EXAONE_LIVE=1 vitest run src/lib/server/exaone.live.spec.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

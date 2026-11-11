@@ -17,3 +17,6 @@ bun.lockb
 worker-configuration.d.ts
 /.svelte-kit/
 /.wrangler/
+
+# 도구가 관리하는 파일 (npx skills가 다시 쓴다)
+skills-lock.json

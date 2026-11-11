@@ -233,3 +233,6 @@ tags
 # wrangler types로 생성되는 파일 (npm run gen)
 worker-configuration.d.ts
 !.dev.vars.example
+
+# 서드파티 에이전트 스킬 설치 폴더 (npx skills). 설치 목록은 skills-lock.json으로 커밋한다
+.agents/

@@ -170,7 +170,7 @@
 - [ ] **Step 1: 프로젝트 초기화와 인프라** — 이슈 #15~#18
   - SvelteKit 초기화(`adapter-cloudflare`, TypeScript, PWA), 린트·타입체크·Vitest 설정
   - `wrangler.jsonc`: 바인딩 `DB`(D1), `BUCKET`(R2), `CACHE`(KV), `REQ_LIMITER`·`CHAT_LIMITER`(Rate Limiting, 분당 30·10), `vars`(기본 `APP_ENV=production`, `LIMITS_MODE=enforce`, `EXAONE_*`, `LLM_*` — `docs/db-schema.md` 6절, `docs/llm-budget.md` 9절). 로컬은 `.dev.vars`(`EXAONE_API_KEY`, 개발 시 `APP_ENV=development`, `LIMITS_MODE=off`).
-  - `schema.sql`: `docs/db-schema.md`의 DDL (`sessions`, `messages`, `qr_assets`, `llm_usage`, `llm_gate`, `narration_cache`). Cron 구현 방식 확인(`scheduled` 지원 여부, 불가 시 별도 Worker).
+  - `migrations/0001_init.sql`: `docs/db-schema.md`의 DDL (`sessions`, `messages`, `qr_assets`, `llm_usage`, `llm_gate`, `narration_cache`), 로컬은 `npm run db:migrate:local`. Cron 구현 방식 확인(`scheduled` 지원 여부, 불가 시 별도 Worker).
 - [ ] **Step 2: AI 연동·한도 통제 모듈** — 이슈 #19~#24
   - `src/lib/server/exaone.ts`: 클라이언트(`reasoning_effort=low`, 타임아웃 20/30초, `reasoning_content` 폐기), 도구 정의 2개(채팅) + `write_product_narration`(서술), 프롬프트 v1, 서버 검증·재시도, 제공자 교체 추상화.
   - `src/lib/server/llm-budget.ts`: D1 원자 카운터, **호출 간격 게이트(1.2초)**, 단계적 축소(L0~L3), 429·서킷 브레이커, **개발 모드 해제(3중 조건)** 및 디버그 헤더. 수용 기준 테스트 포함 (`docs/llm-budget.md` 10절).

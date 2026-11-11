@@ -104,6 +104,8 @@ npm run lint           # prettier + eslint
 npm run check          # 타입 생성 + svelte-check
 npm test               # Vitest
 npm run gen            # wrangler.jsonc 변경 후 Cloudflare 타입(worker-configuration.d.ts) 재생성
+npm run db:migrate:local   # D1 마이그레이션을 로컬 D1에 적용
+npm run db:reset:local     # 로컬 D1 초기화 후 다시 적용
 ```
 
 `worker-configuration.d.ts`는 생성 파일이라 커밋하지 않습니다. Cloudflare 바인딩과 변수 정의는 `wrangler.jsonc`, 시크릿 목록과 등록 절차는 `docs/db-schema.md` 6절을 참고하세요.
